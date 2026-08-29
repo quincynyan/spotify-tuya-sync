@@ -1,1 +1,1 @@
-"# spotify-tuya-sync" 
+# spotify-tuya-sync 
