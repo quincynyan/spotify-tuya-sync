@@ -1,4 +1,4 @@
-spotipy>=2.23.0
-tuya-connector-python>=0.1.2
-colorthief>=0.2.1
-requests>=2.31.0
+spotipy
+tuya-connector-python
+colorthief
+requests
