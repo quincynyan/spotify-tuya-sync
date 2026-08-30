@@ -13,19 +13,52 @@ from tuya_connector import TuyaOpenAPI
 load_dotenv()
 
 # Tuya Credentials
-TUYA_ENDPOINT = os.getenv("TUYA_ENDPOINT", "https://openapi-sg.iotbing.com")
-TUYA_ACCESS_ID = os.getenv("TUYA_ACCESS_ID")
-TUYA_ACCESS_KEY = os.getenv("TUYA_ACCESS_KEY")
-TUYA_DEVICE_ID = os.getenv("TUYA_DEVICE_ID")
+TUYA_ENDPOINT = "https://openapi-sg.iotbing.com"
+TUYA_ACCESS_ID = None
+TUYA_ACCESS_KEY = None
+TUYA_DEVICE_ID = None
 
 # Spotify Credentials
-SPOTIFY_CLIENT_ID = os.getenv(
-    "SPOTIFY_CLIENT_ID") or os.getenv("SPOTIPY_CLIENT_ID")
-SPOTIFY_CLIENT_SECRET = os.getenv(
-    "SPOTIFY_CLIENT_SECRET") or os.getenv("SPOTIPY_CLIENT_SECRET")
-SPOTIFY_REFRESH_TOKEN = os.getenv(
-    "SPOTIFY_REFRESH_TOKEN") or os.getenv("SPOTIPY_REFRESH_TOKEN")
-POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "3"))
+SPOTIFY_CLIENT_ID = None
+SPOTIFY_CLIENT_SECRET = None
+SPOTIFY_REFRESH_TOKEN = None
+POLL_INTERVAL = 3
+
+
+def refresh_config():
+    global TUYA_ENDPOINT, TUYA_ACCESS_ID, TUYA_ACCESS_KEY, TUYA_DEVICE_ID
+    global SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REFRESH_TOKEN, POLL_INTERVAL
+
+    TUYA_ENDPOINT = os.getenv("TUYA_ENDPOINT", TUYA_ENDPOINT)
+    TUYA_ACCESS_ID = os.getenv("TUYA_ACCESS_ID")
+    TUYA_ACCESS_KEY = os.getenv("TUYA_ACCESS_KEY")
+    TUYA_DEVICE_ID = os.getenv("TUYA_DEVICE_ID")
+
+    SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
+    SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
+    SPOTIFY_REFRESH_TOKEN = os.getenv("SPOTIFY_REFRESH_TOKEN")
+    POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", str(POLL_INTERVAL)))
+
+
+def validate_config():
+    refresh_config()
+
+    missing = []
+    for name, value in {
+        "TUYA_ACCESS_ID": TUYA_ACCESS_ID,
+        "TUYA_ACCESS_KEY": TUYA_ACCESS_KEY,
+        "TUYA_DEVICE_ID": TUYA_DEVICE_ID,
+        "SPOTIFY_CLIENT_ID": SPOTIFY_CLIENT_ID,
+        "SPOTIFY_CLIENT_SECRET": SPOTIFY_CLIENT_SECRET,
+        "SPOTIFY_REFRESH_TOKEN": SPOTIFY_REFRESH_TOKEN,
+    }.items():
+        if not value:
+            missing.append(name)
+
+    if missing:
+        raise ValueError(
+            "Missing required environment variables: " + ", ".join(missing)
+        )
 
 
 def get_vibrant_color_from_image(img_bytes):
@@ -35,8 +68,7 @@ def get_vibrant_color_from_image(img_bytes):
     img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
     img = img.resize((64, 64))  # Downsample for fast processing
 
-    pixels = list(img.get_flattened_data()) if hasattr(
-        img, "get_flattened_data") else list(img.getdata())
+    pixels = list(img.getdata())
     best_color = None
     max_score = -1.0
 
@@ -72,6 +104,7 @@ def hsv_to_tuya_hex(h, s, v):
 
 
 def get_spotify_client():
+    refresh_config()
     auth_manager = SpotifyOAuth(
         client_id=SPOTIFY_CLIENT_ID,
         client_secret=SPOTIFY_CLIENT_SECRET,
@@ -85,21 +118,17 @@ def get_spotify_client():
 
 def send_tuya_color(openapi, device_id, r, g, b):
     # Calculate pure HSV values
-    h_norm, s_norm, v_norm = colorsys.rgb_to_hsv(
-        r / 255.0, g / 255.0, b / 255.0)
+    h_norm, _, _ = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
     tuya_h = int(h_norm * 360)
-    tuya_s = 1000  # Lock to max saturation to kill white bleed
-    tuya_v = 1000  # Max brightness
+    tuya_s = 1000
+    tuya_v = 1000
 
     hex_data = hsv_to_tuya_hex(tuya_h, tuya_s, tuya_v)
 
-    # Universal payload explicitly setting work_mode and testing all Tuya DP codes
     commands_list = [
         {"code": "switch_led", "value": True},
         {"code": "work_mode", "value": "colour"},
-        {"code": "colour_data_v2", "value": {
-            "h": tuya_h, "s": tuya_s, "v": tuya_v}},
-        {"code": "colour_data", "value": hex_data}
+        {"code": "colour_data", "value": hex_data},
     ]
 
     payload = {"commands": commands_list}
@@ -110,6 +139,9 @@ def send_tuya_color(openapi, device_id, r, g, b):
 
 
 def main():
+    refresh_config()
+    validate_config()
+
     print("Connecting to Tuya Cloud...")
     openapi = TuyaOpenAPI(TUYA_ENDPOINT, TUYA_ACCESS_ID, TUYA_ACCESS_KEY)
     openapi.connect()
