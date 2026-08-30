@@ -26,49 +26,45 @@ POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "3"))
 
 def pick_vibrant_spicetify_color(palette):
     """
-    Implements the Vibrant.js / Spicetify target swatch scoring algorithm.
-    Prefers high saturation (>0.6) and mid lightness (0.4-0.6).
+    Finds the most colorful, non-grayscale swatch.
+    Prioritizes chromatic energy over raw lightness.
     """
-    TARGET_SATURATION = 0.90
-    TARGET_LIGHTNESS = 0.50
-
-    WEIGHT_SATURATION = 0.65
-    WEIGHT_LIGHTNESS = 0.35
-
     best_color = None
-    best_score = -float("inf")
+    best_chroma = -1.0
 
     for r, g, b in palette:
-        r_n, g_n, b_n = r / 255.0, g / 255.0, b / 255.0
-        h, l, s = colorsys.rgb_to_hls(r_n, g_n, b_n)
+        max_c = max(r, g, b)
+        min_c = min(r, g, b)
+        chroma = (max_c - min_c) / 255.0  # Distance from grayscale
 
-        # Discard true black, pure white, and dull grayscale
-        if l < 0.10 or l > 0.92 or s < 0.15:
+        # Skip near-blacks and near-whites/grays
+        if max_c < 30 or chroma < 0.15:
             continue
 
-        # Score distance from ideal targets
-        sat_score = 1.0 - abs(s - TARGET_SATURATION)
-        light_score = 1.0 - abs(l - TARGET_LIGHTNESS)
+        # Score balances chroma and brightness
+        score = chroma * (max_c / 255.0)
 
-        total_score = (sat_score * WEIGHT_SATURATION) + \
-            (light_score * WEIGHT_LIGHTNESS)
-
-        if total_score > best_score:
-            best_score = total_score
+        if score > best_chroma:
+            best_chroma = score
             best_color = (r, g, b)
 
-    # Fallback to dominant color if album art is monochrome
     return best_color if best_color else palette[0]
 
 
 def rgb_to_boosted_tuya_hsv(r, g, b):
-    h, s, v = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
+    r_n, g_n, b_n = r / 255.0, g / 255.0, b / 255.0
+    h, s, v = colorsys.rgb_to_hsv(r_n, g_n, b_n)
 
     tuya_h = int(h * 360)
-    # Boost saturation to ensure rich bulb color rendering
-    boosted_s = min(1.0, max(0.85, s * 1.5)) if s > 0.15 else max(0.5, s)
-    tuya_s = int(boosted_s * 1000)
-    tuya_v = 1000  # Pin brightness to max for vivid output
+
+    # If any noticeable color exists, force 100% saturation and full brightness
+    # to disengage the white diode mixing on Tuya hardware
+    if s > 0.10:
+        tuya_s = 1000
+        tuya_v = 1000
+    else:
+        tuya_s = 0
+        tuya_v = int(max(200, v * 1000))
 
     return tuya_h, tuya_s, tuya_v
 
@@ -159,7 +155,7 @@ def main():
                         h, s, v = rgb_to_boosted_tuya_hsv(r, g, b)
 
                         print(
-                            f"Selected RGB({r}, {g}, {b}) -> HSV({h}, {s}, {v})")
+                            f"Selected RGB({r}, {g}, {b}) -> Pure HSV({h}, {s}, {v})")
                         res = send_tuya_color(openapi, TUYA_DEVICE_ID, h, s, v)
                         print(f"Tuya Sync Status: {res.get('success')}")
 
