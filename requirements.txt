@@ -1,4 +1,4 @@
 spotipy
 tuya-connector-python
-colorthief
 requests
+Pillow
