@@ -45,12 +45,12 @@ def validate_config():
 
     missing = []
     for name, value in {
-        "TUYA_ACCESS_ID": TUYA_ACCESS_ID,
-        "TUYA_ACCESS_KEY": TUYA_ACCESS_KEY,
-        "TUYA_DEVICE_ID": TUYA_DEVICE_ID,
-        "SPOTIFY_CLIENT_ID": SPOTIFY_CLIENT_ID,
-        "SPOTIFY_CLIENT_SECRET": SPOTIFY_CLIENT_SECRET,
-        "SPOTIFY_REFRESH_TOKEN": SPOTIFY_REFRESH_TOKEN,
+            "TUYA_ACCESS_ID": TUYA_ACCESS_ID,
+            "TUYA_ACCESS_KEY": TUYA_ACCESS_KEY,
+            "TUYA_DEVICE_ID": TUYA_DEVICE_ID,
+            "SPOTIFY_CLIENT_ID": SPOTIFY_CLIENT_ID,
+            "SPOTIFY_CLIENT_SECRET": SPOTIFY_CLIENT_SECRET,
+            "SPOTIFY_REFRESH_TOKEN": SPOTIFY_REFRESH_TOKEN,
     }.items():
         if not value:
             missing.append(name)
@@ -61,15 +61,28 @@ def validate_config():
         )
 
 
-def get_vibrant_color_from_image(img_bytes):
+def require_config_value(name: str, value: str | None) -> str:
+    if value is None or value == "":
+        raise ValueError(f"Missing required environment variable: {name}")
+    return value
+
+
+def get_vibrant_color_from_image(img_bytes: bytes) -> tuple[int, int, int]:
     """
     Directly analyzes raw pixels with PIL and picks the most colorful accent.
     """
     img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
     img = img.resize((64, 64))  # Downsample for fast processing
 
-    pixels = list(img.getdata())
-    best_color = None
+    width, height = img.size
+    pixels: list[tuple[int, int, int]] = []
+    for y in range(height):
+        for x in range(width):
+            pixel = img.getpixel((x, y))
+            if isinstance(pixel, tuple):
+                pixels.append((int(pixel[0]), int(pixel[1]), int(pixel[2])))
+
+    best_color: tuple[int, int, int] | None = None
     max_score = -1.0
 
     for r, g, b in pixels:
@@ -90,11 +103,16 @@ def get_vibrant_color_from_image(img_bytes):
             max_score = score
             best_color = (r, g, b)
 
-    if not best_color:
+    if best_color is None:
         # Fallback to center crop if fully muted
         w, h = img.size
-        best_color = img.getpixel((w // 2, h // 2))
+        pixel = img.getpixel((w // 2, h // 2))
+        if isinstance(pixel, tuple):
+            best_color = (int(pixel[0]), int(pixel[1]), int(pixel[2]))
+        else:
+            best_color = (0, 0, 0)
 
+    assert best_color is not None
     return best_color
 
 
@@ -105,15 +123,23 @@ def hsv_to_tuya_hex(h, s, v):
 
 def get_spotify_client():
     refresh_config()
+    client_id = require_config_value("SPOTIFY_CLIENT_ID", SPOTIFY_CLIENT_ID)
+    client_secret = require_config_value(
+        "SPOTIFY_CLIENT_SECRET", SPOTIFY_CLIENT_SECRET
+    )
+    refresh_token = require_config_value(
+        "SPOTIFY_REFRESH_TOKEN", SPOTIFY_REFRESH_TOKEN
+    )
+
     auth_manager = SpotifyOAuth(
-        client_id=SPOTIFY_CLIENT_ID,
-        client_secret=SPOTIFY_CLIENT_SECRET,
+        client_id=client_id,
+        client_secret=client_secret,
         redirect_uri="http://127.0.0.1:8888/callback",
         scope="user-read-playback-state",
-        open_browser=False
+        open_browser=False,
     )
-    token_info = auth_manager.refresh_access_token(SPOTIFY_REFRESH_TOKEN)
-    return spotipy.Spotify(auth=token_info['access_token']), auth_manager
+    token_info = auth_manager.refresh_access_token(refresh_token)
+    return spotipy.Spotify(auth=token_info["access_token"]), auth_manager
 
 
 def send_tuya_color(openapi, device_id, r, g, b):
@@ -142,8 +168,13 @@ def main():
     refresh_config()
     validate_config()
 
+    tuya_endpoint = require_config_value("TUYA_ENDPOINT", TUYA_ENDPOINT)
+    tuya_access_id = require_config_value("TUYA_ACCESS_ID", TUYA_ACCESS_ID)
+    tuya_access_key = require_config_value("TUYA_ACCESS_KEY", TUYA_ACCESS_KEY)
+    tuya_device_id = require_config_value("TUYA_DEVICE_ID", TUYA_DEVICE_ID)
+
     print("Connecting to Tuya Cloud...")
-    openapi = TuyaOpenAPI(TUYA_ENDPOINT, TUYA_ACCESS_ID, TUYA_ACCESS_KEY)
+    openapi = TuyaOpenAPI(tuya_endpoint, tuya_access_id, tuya_access_key)
     openapi.connect()
     print("Tuya Connected.")
 
