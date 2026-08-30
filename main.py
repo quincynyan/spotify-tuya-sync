@@ -2,11 +2,15 @@ import os
 import time
 import colorsys
 import io
+
+from dotenv import load_dotenv
 import requests
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 from PIL import Image
 from tuya_connector import TuyaOpenAPI
+
+load_dotenv()
 
 # Tuya Credentials
 TUYA_ENDPOINT = os.getenv("TUYA_ENDPOINT", "https://openapi-sg.iotbing.com")

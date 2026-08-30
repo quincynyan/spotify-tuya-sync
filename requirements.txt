@@ -2,3 +2,4 @@ spotipy
 tuya-connector-python
 requests
 Pillow
+python-dotenv
