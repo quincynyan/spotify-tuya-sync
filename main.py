@@ -31,7 +31,8 @@ def get_vibrant_color_from_image(img_bytes):
     img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
     img = img.resize((64, 64))  # Downsample for fast processing
 
-    pixels = list(img.getdata())
+    pixels = list(img.get_flattened_data()) if hasattr(
+        img, "get_flattened_data") else list(img.getdata())
     best_color = None
     max_score = -1.0
 
